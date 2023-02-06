@@ -12,9 +12,17 @@ import (
 	"strings"
 )
 
+const (
+	_sep = os.PathSeparator
+)
+
 func main() {
-	// use filepath.Join to have OS-specific paths (/ in Unix, \ in Windows):
-	if !Exists(filepath.Join("src", "BonitaCommunity-2023.1-SNAPSHOT.zip")) || !Exists(filepath.Join("src", "my-application")) {
+	// Try to find a Bonita zip file inside :
+	matches, err := filepath.Glob("src" + string(_sep) + "Bonita*.zip")
+	if err != nil {
+		panic(err)
+	}
+	if len(matches) == 0 || !Exists(filepath.Join("src", "my-application")) {
 		fmt.Println("Please place in src/ folder:")
 		fmt.Println(" * ZIP file of Bonita Tomcat Bundle (Eg. BonitaCommunity-2023.1.zip)")
 		fmt.Println(" * my-application/ folder containing all artifacts of your application")
@@ -27,25 +35,27 @@ func main() {
 			panic(err)
 		}
 	}
-	fmt.Println("Unpacking Bonita Tomcat bundle")
-	unzipFile(filepath.Join("src", "BonitaCommunity-2023.1-SNAPSHOT.zip"), "output")
+	bundleNameAndPath := matches[0]
+	bundleName := bundleNameAndPath[4:strings.Index(bundleNameAndPath, ".zip")] // until end of string
+	fmt.Println("Unpacking Bonita Tomcat bundle" + bundleName + ".zip")
+	unzipFile(bundleNameAndPath, "output")
 	fmt.Println("Unpacking Bonita WAR file")
-	unzipFile(filepath.Join("output", "BonitaCommunity-2023.1-SNAPSHOT", "server", "webapps", "bonita.war"), filepath.Join("output", "BonitaCommunity-2023.1-SNAPSHOT", "server", "webapps", "bonita"))
+	unzipFile(filepath.Join("output", bundleName, "server", "webapps", "bonita.war"), filepath.Join("output", bundleName, "server", "webapps", "bonita"))
 	fmt.Println("Removing unpacked Bonita WAR file")
-	if err := os.Remove(filepath.Join("output", "BonitaCommunity-2023.1-SNAPSHOT", "server", "webapps", "bonita.war")); err != nil {
+	if err := os.Remove(filepath.Join("output", bundleName, "server", "webapps", "bonita.war")); err != nil {
 		panic(err)
 	}
 	fmt.Println("Copying your custom application inside Bonita")
-	err := cp.Copy(filepath.Join("src", "my-application"), filepath.Join("output", "BonitaCommunity-2023.1-SNAPSHOT", "server", "webapps", "bonita", "WEB-INF", "classes", "my-application"))
+	err = cp.Copy(filepath.Join("src", "my-application"), filepath.Join("output", bundleName, "server", "webapps", "bonita", "WEB-INF", "classes", "my-application"))
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("Re-packing Bonita bundle containing your application")
-	err = zipDirectory(filepath.Join("output", "BonitaCommunity-2023.1-custom-application.zip"), filepath.Join("output", "BonitaCommunity-2023.1-SNAPSHOT"), "BonitaCommunity-2023.1-SNAPSHOT")
+	err = zipDirectory(filepath.Join("output", bundleName+"-custom-application.zip"), filepath.Join("output", bundleName), bundleName)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Done. Self-contained application available: BonitaCommunity-2023.1-custom-application.zip")
+	fmt.Println("Done. Self-contained application available: " + bundleName + "-application.zip")
 }
 
 func unzipFile(zipFile string, outputDir string) {

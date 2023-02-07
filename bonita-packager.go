@@ -51,7 +51,7 @@ func main() {
 		panic(err)
 	}
 	fmt.Println("Re-packing Bonita bundle containing your application")
-	err = zipDirectory(filepath.Join("output", bundleName+"-custom-application.zip"), filepath.Join("output", bundleName), bundleName)
+	err = zipDirectory(filepath.Join("output", bundleName+"-application.zip"), filepath.Join("output", bundleName), bundleName)
 	if err != nil {
 		panic(err)
 	}

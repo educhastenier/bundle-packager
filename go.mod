@@ -1,4 +1,4 @@
-module bonita-packager
+module github.com/educhastenier/bundle-packager
 
 go 1.18
 

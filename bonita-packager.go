@@ -4,12 +4,13 @@ import (
 	"archive/zip"
 	"errors"
 	"fmt"
-	cp "github.com/otiai10/copy"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+
+	cp "github.com/otiai10/copy"
 )
 
 const (
@@ -37,7 +38,7 @@ func main() {
 	}
 	bundleNameAndPath := matches[0]
 	bundleName := bundleNameAndPath[4:strings.Index(bundleNameAndPath, ".zip")] // until end of string
-	fmt.Println("Unpacking Bonita Tomcat bundle" + bundleName + ".zip")
+	fmt.Printf("Unpacking Bonita Tomcat bundle %s.zip\n", bundleName)
 	unzipFile(bundleNameAndPath, "output")
 	fmt.Println("Unpacking Bonita WAR file")
 	unzipFile(filepath.Join("output", bundleName, "server", "webapps", "bonita.war"), filepath.Join("output", bundleName, "server", "webapps", "bonita"))
@@ -55,7 +56,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Done. Self-contained application available: " + bundleName + "-application.zip")
+	fmt.Println("Done. Self-contained application available:", filepath.Join("output", bundleName+"-application.zip"))
 }
 
 func unzipFile(zipFile string, outputDir string) {

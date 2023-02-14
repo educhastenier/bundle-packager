@@ -1,0 +1,17 @@
+# FIX VERSION at release time:
+ARG BONITA_VERSION=8.0-SNAPSHOT
+
+FROM bonitasoft.jfrog.io/docker-snapshot-local/bonita-subscription:$BONITA_VERSION
+
+ENV CUSTOM_APPLICATION_FOLDER="my-application"
+ENV BONITA_WEB_INF_CLASSES_PATH="/opt/bonita/server/webapps/bonita/WEB-INF/classes"
+ENV BONITA_PAGES_PATH="${BONITA_WEB_INF_CLASSES_PATH}/org/bonitasoft/web/page"
+ENV BONITA_APPLICATIONS_PATH="${BONITA_WEB_INF_CLASSES_PATH}/org/bonitasoft/web/application"
+
+USER bonita
+
+# Add custom bonita application
+COPY --chown=bonita:bonita ${CUSTOM_APPLICATION_FOLDER} ${BONITA_WEB_INF_CLASSES_PATH}/${CUSTOM_APPLICATION_FOLDER}
+
+# Remove unecessary provided Bonita generic pages and applications
+RUN rm ${BONITA_PAGES_PATH}/*.zip ${BONITA_APPLICATIONS_PATH}/*.zip

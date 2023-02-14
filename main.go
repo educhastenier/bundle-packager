@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -21,10 +22,14 @@ import (
 )
 
 const (
-	_sep = os.PathSeparator
+	_sep              = os.PathSeparator
+	dockerImagePrefix = "bonitasoft/bonita-package-docker-"
 )
 
-var dockerImagePrefix = "bonitasoft/bonita-package-docker-"
+var (
+	verbose   = flag.Bool("verbose", false, "Enable verbose (debug) mode")
+	dockertag = flag.String("dockertag", dockerImagePrefix+"[community|subscription]", "Docker image tag to use when building")
+)
 
 type ErrorLine struct {
 	Error       string      `json:"error"`
@@ -36,6 +41,10 @@ type ErrorDetail struct {
 }
 
 func main() {
+	flag.Parse()
+	fmt.Println("Verbose mode      : ", *verbose)
+	fmt.Println("Docker image name : ", *dockertag)
+
 	// Try to find a Bonita zip file inside :
 	matches, err := filepath.Glob("src" + string(_sep) + "Bonita*.zip")
 	if err != nil {
@@ -44,7 +53,7 @@ func main() {
 	if len(matches) == 0 || !Exists(filepath.Join("src", "my-application")) {
 		fmt.Println("Please place in src/ folder:")
 		fmt.Println(" * ZIP file of Bonita Tomcat Bundle (Eg. BonitaCommunity-2023.1-u0.zip, BonitaSubscription-2023.1-u2.zip)")
-		fmt.Println(" * my-application/ folder containing all artifacts of your application, or containing directly the .zip file of your application")
+		fmt.Println(" * my-application/ folder containing all artifacts of your application, or containing directly the entire .zip file of your application")
 		fmt.Println("and then re-run this program")
 		return
 	}
@@ -100,7 +109,7 @@ func buildDockerImages() {
 }
 
 func imageBuild(dockerClient *client.Client, edition string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*120)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*200)
 	defer cancel()
 
 	tar, err := archive.TarWithOptions("src/", &archive.TarOptions{})
@@ -108,7 +117,7 @@ func imageBuild(dockerClient *client.Client, edition string) error {
 		return err
 	}
 
-	fullDockerImageName := dockerImagePrefix + edition
+	fullDockerImageName := *dockertag + edition
 	opts := types.ImageBuildOptions{
 		Dockerfile: "Dockerfile." + edition,
 		Tags:       []string{fullDockerImageName},
@@ -136,8 +145,9 @@ func print(rd io.Reader) error {
 	scanner := bufio.NewScanner(rd)
 	for scanner.Scan() {
 		lastLine = scanner.Text()
-		// FIXME: add -v --verbose parameter to activate this Println:
-		// fmt.Println(scanner.Text())
+		if *verbose { // print docker build output if verbose mode ON:
+			fmt.Println(scanner.Text())
+		}
 	}
 
 	errLine := &ErrorLine{}

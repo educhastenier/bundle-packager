@@ -11,3 +11,4 @@ COPY --chown=bonita:bonita ${CUSTOM_APPLICATION_FOLDER} ${BONITA_WEB_INF_CLASSES
 
 # Remove unecessary provided Bonita generic pages and applications
 RUN rm ${BONITA_PAGES_PATH}/*.zip ${BONITA_APPLICATIONS_PATH}/*.zip
+

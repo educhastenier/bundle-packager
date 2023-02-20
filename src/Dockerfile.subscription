@@ -1,7 +1,7 @@
 # FIX VERSION at release time:
 ARG BONITA_VERSION=8.0-SNAPSHOT
 
-FROM bonitasoft.jfrog.io/docker-snapshot-local/bonita-subscription:$BONITA_VERSION
+FROM bonitasoft/bonita-subscription:$BONITA_VERSION
 
 ENV CUSTOM_APPLICATION_FOLDER="my-application"
 ENV BONITA_WEB_INF_CLASSES_PATH="/opt/bonita/server/webapps/bonita/WEB-INF/classes"

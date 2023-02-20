@@ -27,49 +27,99 @@ const (
 )
 
 var (
-	verbose   = flag.Bool("verbose", false, "Enable verbose (debug) mode")
-	dockertag = flag.String("dockertag", dockerImagePrefix+"[community|subscription]", "Docker image tag to use when building")
+	// Flags:
+	tomcatFlag = flag.Bool("tomcat", false, "Choose to build a Tomcat bundle containing your application")
+	dockerFlag = flag.Bool("docker", false, `Choose to build a docker image containing your application,
+	use -tag to specify the name of your built image
+	By default, it builds a 'Community' Docker image
+	use -subscription to build a 'Subscription" Docker image (you must have the rights to download Bonita Subscription Docker base image)`)
+	dockerSubscription = flag.Bool("subscription", false, "Choose to build a Subscription-based docker image (default build a Community image)")
+	tag                = flag.String("tag", dockerImagePrefix, "Docker image tag to use when building")
+	verbose            = flag.Bool("verbose", false, "Enable verbose (debug) mode")
 )
-
-type ErrorLine struct {
-	Error       string      `json:"error"`
-	ErrorDetail ErrorDetail `json:"errorDetail"`
-}
-
-type ErrorDetail struct {
-	Message string `json:"message"`
-}
 
 func main() {
 	flag.Parse()
-	fmt.Println("Verbose mode      : ", *verbose)
-	fmt.Println("Docker image name : ", *dockertag)
+	flag.Usage = func() {
+		w := flag.CommandLine.Output()
+		fmt.Fprintf(w, "Usage of %s:\n\n", os.Args[0])
+		fmt.Fprintln(w, "This tool allows to build a Bonita Tomcat bundle or a Bonita Docker image containing your custom application")
+		fmt.Fprintln(w, "one of '-tomcat' or '-docker' is mandatory")
+		flag.PrintDefaults()
+	}
 
-	// Try to find a Bonita zip file inside :
-	matches, err := filepath.Glob("src" + string(_sep) + "Bonita*.zip")
+	// Create src/my-application folder if not exist:
+	myAppFolder := filepath.Join("src", "my-application")
+	if !Exists(myAppFolder) {
+		if err := os.MkdirAll(myAppFolder, os.ModePerm); err != nil {
+			panic(err)
+		}
+	}
+
+	if !*dockerFlag && !*tomcatFlag {
+		fmt.Printf("Please specify '-tomcat' if you want to build a Bonita Tomcat Bundle or '-docker' if you want to build a Bonita Docker image\n\n")
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	fmt.Println("Verbose mode          :", *verbose)
+	fmt.Println("Build Tomcat bundle   :", *tomcatFlag)
+	fmt.Println("Build Docker image    :", *dockerFlag)
+	var dockerEdition = "community"
+	if *dockerFlag {
+		fmt.Println("Docker image tag name :", *tag)
+		if *dockerSubscription {
+			dockerEdition = "subscription"
+		}
+		fmt.Println("Docker image edition  :", dockerEdition)
+	}
+
+	// Check that application ZIP is present
+	applicationMatches, err := filepath.Glob("src" + string(_sep) + "my-application" + string(_sep) + "*.zip")
 	if err != nil {
 		panic(err)
 	}
-	if len(matches) == 0 || !Exists(filepath.Join("src", "my-application")) {
+
+	if *tomcatFlag {
+		buildTomcatBundle(applicationMatches)
+	}
+
+	if *dockerFlag {
+		fmt.Println("Building Docker image (Community & Subscription editions)")
+		buildDockerImages(dockerEdition)
+	}
+}
+
+func buildTomcatBundle(applicationMatches []string) {
+	// Try to find a Bonita zip file inside:
+	bundleMatches, err := filepath.Glob("src" + string(_sep) + "Bonita*.zip")
+	if err != nil {
+		panic(err)
+	}
+	if len(bundleMatches) == 0 || len(applicationMatches) == 0 {
 		fmt.Println("Please place in src/ folder:")
-		fmt.Println(" * ZIP file of Bonita Tomcat Bundle (Eg. BonitaCommunity-2023.1-u0.zip, BonitaSubscription-2023.1-u2.zip)")
-		fmt.Println(" * my-application/ folder containing all artifacts of your application, or containing directly the entire .zip file of your application")
+		fmt.Println(" * in src/ folder, the ZIP file of Bonita Tomcat Bundle (Eg. BonitaCommunity-2023.1-u0.zip, BonitaSubscription-2023.1-u2.zip)")
+		fmt.Println(" * in src/my-application/ folder the ZIP file containing your entire application")
 		fmt.Println("and then re-run this program")
 		return
 	}
 	if Exists("output") {
-		fmt.Println("Cleaning 'output' directory")
+		if *verbose {
+			fmt.Println("Cleaning 'output' directory")
+		}
 		if err := os.RemoveAll("output"); err != nil {
 			panic(err)
 		}
 	}
-	bundleNameAndPath := matches[0]
+	bundleNameAndPath := bundleMatches[0]
 	bundleName := bundleNameAndPath[4:strings.Index(bundleNameAndPath, ".zip")] // until end of string
 	fmt.Printf("Unpacking Bonita Tomcat bundle %s.zip\n", bundleName)
 	unzipFile(bundleNameAndPath, "output")
 	fmt.Println("Unpacking Bonita WAR file")
 	unzipFile(filepath.Join("output", bundleName, "server", "webapps", "bonita.war"), filepath.Join("output", bundleName, "server", "webapps", "bonita"))
-	fmt.Println("Removing unpacked Bonita WAR file")
+	if *verbose {
+		fmt.Println("Removing unpacked Bonita WAR file")
+	}
 	if err := os.Remove(filepath.Join("output", bundleName, "server", "webapps", "bonita.war")); err != nil {
 		panic(err)
 	}
@@ -83,25 +133,27 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Done. Self-contained application available:", filepath.Join("output", bundleName+"-application.zip"))
+	tempfolderToZip := filepath.Join("output", bundleName)
+	if Exists(tempfolderToZip) {
+		if *verbose {
+			fmt.Println("Cleaning temporary directory structure")
+		}
+		// if err := os.RemoveAll(tempfolderToZip); err != nil {
+		// 	panic(err)
+		// }
+	}
+	fmt.Println("\nSuccessfully re-packaged self-contained application:", filepath.Join("output", bundleName+"-application.zip"))
 
-	fmt.Println("Building Docker images (Community & Subscription editions)")
-	buildDockerImages()
 }
 
-func buildDockerImages() {
+func buildDockerImages(dockerEdition string) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	err = imageBuild(cli, "community")
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-	err = imageBuild(cli, "subscription")
+	err = imageBuild(cli, dockerEdition)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -109,6 +161,7 @@ func buildDockerImages() {
 }
 
 func imageBuild(dockerClient *client.Client, edition string) error {
+	fmt.Printf("Building %s Docker image\n", edition)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*200)
 	defer cancel()
 
@@ -117,14 +170,20 @@ func imageBuild(dockerClient *client.Client, edition string) error {
 		return err
 	}
 
-	fullDockerImageName := *dockertag + edition
+	fullDockerImageName := *tag + edition
 	opts := types.ImageBuildOptions{
 		Dockerfile: "Dockerfile." + edition,
 		Tags:       []string{fullDockerImageName},
 		Remove:     true,
 	}
+	if *verbose {
+		fmt.Println("Dockerfile used: " + opts.Dockerfile)
+		fmt.Println("Building image: " + fullDockerImageName)
+	}
+
 	res, err := dockerClient.ImageBuild(ctx, tar, opts)
 	if err != nil {
+		fmt.Println("Error building image")
 		return err
 	}
 
@@ -258,19 +317,35 @@ func addFilesToZip(w *zip.Writer, basePath, baseInZip string) error {
 		}
 
 		if file.IsDir() {
+			// create dir first
+			path := filepath.Join(baseInZip, file.Name())
+			if *verbose {
+				fmt.Println("Creating zip dir", path)
+			}
+			_, err := w.Create(path + "/")
+			if err != nil {
+				return err
+			}
+			// then add files inside it
 			if err := addFilesToZip(w, fullfilepath, filepath.Join(baseInZip, file.Name())); err != nil {
 				return err
 			}
 		} else if file.Mode().IsRegular() {
 			dat, err := ioutil.ReadFile(fullfilepath)
+			// fileRead, err := os.Open(fullfilepath) // dat, err := ioutil.ReadFile(fullfilepath)
 			if err != nil {
 				return err
 			}
-			f, err := w.Create(filepath.Join(baseInZip, file.Name()))
+			//w.OpenFile(name, O_RDWR|O_CREATE|O_TRUNC, file.Mode())
+			fh := &zip.FileHeader{Name: filepath.Join(baseInZip, file.Name())}
+			fh.SetMode(file.Mode())
+			f, err := w.CreateHeader(fh)
+			// f, err := w.Create(filepath.Join(baseInZip, file.Name()))
 			if err != nil {
 				return err
 			}
 			_, err = f.Write(dat)
+			// _, err = io.Copy(f, fileRead) //f.Write(dat)
 			if err != nil {
 				return err
 			}
@@ -279,4 +354,13 @@ func addFilesToZip(w *zip.Writer, basePath, baseInZip string) error {
 		}
 	}
 	return nil
+}
+
+type ErrorLine struct {
+	Error       string      `json:"error"`
+	ErrorDetail ErrorDetail `json:"errorDetail"`
+}
+
+type ErrorDetail struct {
+	Message string `json:"message"`
 }

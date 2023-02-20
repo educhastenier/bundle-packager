@@ -8,7 +8,8 @@ dist
 output
 
 # Test run folder
-src
+src/*.zip
+src/my-application/*
 
 # Test binary, built with `go test -c`
 *.test
